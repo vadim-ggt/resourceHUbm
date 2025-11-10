@@ -14,6 +14,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 
 import FeedPage from './pages/FeedPage';
 import ResourcePage from './pages/ResourcePage';
+import ProfilePage from './pages/ProfilePage';
 
 
 
@@ -163,6 +164,7 @@ const App: React.FC = () => {
                     <Routes>
                         <Route path="/" element={<FeedPage />} />
                         <Route path="/resource/:id" element={<ResourcePage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
                     </Routes>
                 </Box>
 

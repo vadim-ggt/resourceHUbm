@@ -29,15 +29,9 @@ public class ResourceService {
         return resourceRepository.findByUser(currentUser);
     }
 
-    public Resource getResourceById(Long id, User currentUser) {
-        Resource resource = resourceRepository.findById(id)
+    public Resource getResourceById(Long id) {
+        return resourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found"));
-
-        if (!resource.getUser().getId().equals(currentUser.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot access this resource");
-        }
-
-        return resource;
     }
 
 

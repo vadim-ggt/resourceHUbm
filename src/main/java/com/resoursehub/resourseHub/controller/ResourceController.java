@@ -38,9 +38,8 @@ public class ResourceController {
     }
 
     @GetMapping("/{id}")
-    public Resource getResourceById(@PathVariable Long id, HttpServletRequest request) {
-        User currentUser = (User) request.getAttribute("currentUser");
-        return resourceService.getResourceById(id, currentUser);
+    public Resource getResourceById(@PathVariable Long id) {
+        return resourceService.getResourceById(id);
     }
 
 
