@@ -13,15 +13,15 @@ interface User {
 
 interface Comment {
     id: number;
-    content: string;
-    user: User;
+    text: string;
+    author: User;
     createdAt: string;
 }
 
 interface Like {
     id: number;
-    userId: number; // если сервер возвращает userId
     createdAt: string;
+    user: User;
 }
 
 interface Resource {
@@ -38,18 +38,52 @@ interface Resource {
     likedByCurrentUser?: boolean;
 }
 
+// Функция для получения текущего пользователя из первого ресурса
+const getCurrentUserFromResources = async (): Promise<User | null> => {
+    if (!localStorage.getItem("token")) {
+        return null;
+    }
+
+    try {
+        // Получаем список ресурсов пользователя чтобы узнать его ID
+        const res = await apiFetch('/resources');
+        if (res.ok) {
+            const resources = await res.json();
+            if (resources.length > 0 && resources[0].user) {
+                return resources[0].user;
+            }
+        }
+    } catch (error) {
+        console.error("Error getting current user from resources:", error);
+    }
+
+    return null;
+};
+
 const ResourcePage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const [resource, setResource] = useState<Resource | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [newComment, setNewComment] = useState("");
-
-    // допустим, у нас есть текущий пользователь (можно получать из контекста)
-    const currentUserId = 3;
+    const [likeLoading, setLikeLoading] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [userLoading, setUserLoading] = useState(true);
 
     useEffect(() => {
-        if (!id) return;
+        // Получаем текущего пользователя при загрузке компонента
+        const fetchCurrentUser = async () => {
+            const user = await getCurrentUserFromResources();
+            console.log("Текущий пользователь:", user);
+            setCurrentUser(user);
+            setUserLoading(false);
+        };
+
+        fetchCurrentUser();
+    }, []);
+
+    useEffect(() => {
+        if (!id || userLoading) return;
 
         const fetchResource = async () => {
             try {
@@ -57,8 +91,20 @@ const ResourcePage: React.FC = () => {
                 if (!res.ok) throw new Error("Не удалось загрузить ресурс");
                 const data = await res.json();
 
-                // вычисляем количество лайков и проверяем, ставил ли текущий пользователь лайк
-                data.likedByCurrentUser = data.likes.some((like: Like) => like.userId === currentUserId);
+                console.log("Полученный ресурс:", data);
+                console.log("Текущий пользователь для проверки лайков:", currentUser);
+
+                // Определяем, поставил ли текущий пользователь лайк
+                const currentUserId = currentUser?.id;
+                if (currentUserId) {
+                    data.likedByCurrentUser = data.likes?.some((like: Like) =>
+                        like.user?.id === currentUserId
+                    ) || false;
+                    console.log("Лайк текущего пользователя:", data.likedByCurrentUser);
+                } else {
+                    data.likedByCurrentUser = false;
+                }
+
                 setResource(data);
             } catch (err: any) {
                 console.error(err);
@@ -69,41 +115,124 @@ const ResourcePage: React.FC = () => {
         };
 
         fetchResource();
-    }, [id]);
+    }, [id, currentUser, userLoading]);
 
     const handleLike = async () => {
-        if (!resource) return;
+        if (!resource || !currentUser) {
+            setError("Необходимо авторизоваться для оценки ресурсов");
+            return;
+        }
 
+        setLikeLoading(true);
         try {
             const method = resource.likedByCurrentUser ? "DELETE" : "POST";
-            await apiFetch(`/likes/${resource.id}`, { method });
+            console.log("Отправка лайка:", method, "для ресурса:", resource.id, "пользователем:", currentUser.id);
 
-            // после изменения лайка обновляем информацию с сервера
-            const updatedResource = await apiFetch(`/resources/${resource.id}`).then(res => res.json());
-            updatedResource.likedByCurrentUser = updatedResource.likes.some((like: Like) => like.userId === currentUserId);
+            const res = await apiFetch(`/likes/${resource.id}`, { method });
 
-            setResource(updatedResource);
-        } catch (err) {
+            if (!res.ok) {
+                throw new Error("Ошибка при изменении лайка");
+            }
+
+            // Оптимистичное обновление UI
+            setResource(prev => {
+                if (!prev) return prev;
+
+                if (method === "POST") {
+                    // Добавляем лайк
+                    const newLike: Like = {
+                        id: Date.now(),
+                        createdAt: new Date().toISOString(),
+                        user: currentUser
+                    };
+                    return {
+                        ...prev,
+                        likedByCurrentUser: true,
+                        likes: [...prev.likes, newLike]
+                    };
+                } else {
+                    // Удаляем лайк текущего пользователя
+                    return {
+                        ...prev,
+                        likedByCurrentUser: false,
+                        likes: prev.likes.filter(like => like.user?.id !== currentUser.id)
+                    };
+                }
+            });
+
+            // Фоновая синхронизация с сервером
+            setTimeout(async () => {
+                try {
+                    const updatedRes = await apiFetch(`/resources/${resource.id}`);
+                    const updatedResource = await updatedRes.json();
+
+                    // Обновляем состояние лайка текущего пользователя
+                    updatedResource.likedByCurrentUser = updatedResource.likes?.some((like: Like) =>
+                        like.user?.id === currentUser.id
+                    ) || false;
+
+                    setResource(updatedResource);
+                } catch (err) {
+                    console.error("Ошибка при синхронизации:", err);
+                }
+            }, 300);
+
+        } catch (err: any) {
             console.error("Ошибка при лайке:", err);
+            setError(err.message || "Не удалось обновить лайк");
+
+            // Откатываем изменения в случае ошибки
+            setResource(prev => prev ? { ...prev } : prev);
+        } finally {
+            setLikeLoading(false);
         }
     };
 
     const handleAddComment = async () => {
         if (!resource || !newComment.trim()) return;
+
+        if (!currentUser) {
+            setError("Необходимо авторизоваться для добавления комментариев");
+            return;
+        }
+
         try {
+            console.log("Отправка комментария:", { text: newComment });
+
             const res = await apiFetch(`/comments/${resource.id}`, {
                 method: "POST",
-                body: JSON.stringify({ content: newComment }),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: newComment
+                }),
             });
-            const comment = await res.json();
-            setResource(prev => prev ? { ...prev, comments: [...prev.comments, comment] } : prev);
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(errorText || "Ошибка при добавлении комментария");
+            }
+
+            const serverComment = await res.json();
+            console.log("Создан комментарий:", serverComment);
+
+            // Добавляем комментарий в список
+            setResource(prev => prev ? {
+                ...prev,
+                comments: [...prev.comments, serverComment]
+            } : prev);
             setNewComment("");
-        } catch (err) {
+        } catch (err: any) {
             console.error("Ошибка при добавлении комментария:", err);
+            setError(err.message || "Не удалось добавить комментарий");
         }
     };
 
-    if (loading) return <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}><CircularProgress /></Box>;
+    // Проверяем авторизацию для отображения интерфейса
+    const isAuthenticated = !!currentUser;
+
+    if (loading || userLoading) return <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}><CircularProgress /></Box>;
     if (error) return <Alert severity="error">{error}</Alert>;
     if (!resource) return <Alert severity="info">Ресурс не найден</Alert>;
 
@@ -131,34 +260,59 @@ const ResourcePage: React.FC = () => {
                             variant={resource.likedByCurrentUser ? "contained" : "outlined"}
                             color="primary"
                             onClick={handleLike}
+                            disabled={likeLoading || !isAuthenticated}
                         >
-                            👍 {resource.likedByCurrentUser ? "Убрать лайк" : "Лайк"}
+                            {likeLoading ? <CircularProgress size={24} /> : "👍"}
+                            {resource.likedByCurrentUser ? " Убрать лайк" : " Лайк"}
                         </Button>
-                        <Typography>{resource.likes.length} {resource.likes.length === 1 ? "лайк" : "лайков"}</Typography>
+                        <Typography>
+                            {resource.likes?.length || 0} {resource.likes?.length === 1 ? "лайк" : "лайков"}
+                        </Typography>
+                        {!isAuthenticated && (
+                            <Typography variant="caption" color="text.secondary">
+                                (Войдите, чтобы оценить)
+                            </Typography>
+                        )}
                     </Box>
 
                     <Divider sx={{ mb: 2 }} />
 
                     {/* Комментарии */}
-                    <Typography variant="h6" sx={{ mb: 1 }}>Комментарии</Typography>
-                    {resource.comments.map(c => (
-                        <Box key={c.id} sx={{ mb: 1, p: 1, borderRadius: 1, bgcolor: "#f5f5f5" }}>
-                            <Typography variant="body2"><strong>{c.user.username}</strong>:</Typography>
-                            <Typography variant="body2">{c.content}</Typography>
-                            <Typography variant="caption" color="text.secondary">{new Date(c.createdAt).toLocaleString()}</Typography>
-                        </Box>
-                    ))}
+                    <Typography variant="h6" sx={{ mb: 1 }}>Комментарии ({resource.comments?.length || 0})</Typography>
+
+                    {resource.comments?.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Пока нет комментариев. Будьте первым!
+                        </Typography>
+                    ) : (
+                        resource.comments?.map(c => (
+                            <Box key={c.id} sx={{ mb: 1, p: 1, borderRadius: 1, bgcolor: "#f5f5f5" }}>
+                                <Typography variant="body2"><strong>{c.author.username}</strong>:</Typography>
+                                <Typography variant="body2">{c.text}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {new Date(c.createdAt).toLocaleString()}
+                                </Typography>
+                            </Box>
+                        ))
+                    )}
 
                     {/* Добавление нового комментария */}
                     <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
                         <TextField
                             fullWidth
-                            placeholder="Написать комментарий..."
+                            placeholder={isAuthenticated ? "Написать комментарий..." : "Войдите, чтобы комментировать"}
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}
                             size="small"
+                            disabled={!isAuthenticated}
                         />
-                        <Button variant="contained" onClick={handleAddComment}>Отправить</Button>
+                        <Button
+                            variant="contained"
+                            onClick={handleAddComment}
+                            disabled={!newComment.trim() || !isAuthenticated}
+                        >
+                            Отправить
+                        </Button>
                     </Box>
                 </CardContent>
             </Card>

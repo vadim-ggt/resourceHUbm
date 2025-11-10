@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
     BrowserRouter as Router,
@@ -15,8 +14,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import FeedPage from './pages/FeedPage';
 import ResourcePage from './pages/ResourcePage';
 import ProfilePage from './pages/ProfilePage';
-
-
+import { AuthProvider } from './context/AuthContext';
 
 interface LoginDialogProps {
     open: boolean;
@@ -42,9 +40,6 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose, onLogin }) => 
         </Dialog>
     );
 };
-
-
-
 
 interface RegisterDialogProps {
     open: boolean;
@@ -72,8 +67,6 @@ const RegisterDialog: React.FC<RegisterDialogProps> = ({ open, onClose, onRegist
         </Dialog>
     );
 };
-
-
 
 const App: React.FC = () => {
     const [openLogin, setOpenLogin] = useState(false);
@@ -133,70 +126,72 @@ const App: React.FC = () => {
     };
 
     return (
-        <Router>
-            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                {/* Верхняя панель */}
-                <AppBar position="fixed" sx={{ backgroundColor: '#2f3640' }}>
-                    <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                            ResourceHub
-                        </Typography>
-                        {token ? (
-                            <Box>
-                                <Button color="inherit" component={Link} to="/profile" startIcon={<AccountCircleIcon />}>
-                                    Профиль
-                                </Button>
-                                <Button color="inherit" onClick={handleLogout}>
-                                    Выйти
-                                </Button>
-                            </Box>
-                        ) : (
-                            <Box>
-                                <Button color="inherit" onClick={() => setOpenLogin(true)}>Войти</Button>
-                                <Button color="inherit" onClick={() => setOpenRegister(true)}>Регистрация</Button>
-                            </Box>
-                        )}
-                    </Toolbar>
-                </AppBar>
+        <AuthProvider> {/* Оборачиваем все приложение в AuthProvider */}
+            <Router>
+                <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                    {/* Верхняя панель */}
+                    <AppBar position="fixed" sx={{ backgroundColor: '#2f3640' }}>
+                        <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                ResourceHub
+                            </Typography>
+                            {token ? (
+                                <Box>
+                                    <Button color="inherit" component={Link} to="/profile" startIcon={<AccountCircleIcon />}>
+                                        Профиль
+                                    </Button>
+                                    <Button color="inherit" onClick={handleLogout}>
+                                        Выйти
+                                    </Button>
+                                </Box>
+                            ) : (
+                                <Box>
+                                    <Button color="inherit" onClick={() => setOpenLogin(true)}>Войти</Button>
+                                    <Button color="inherit" onClick={() => setOpenRegister(true)}>Регистрация</Button>
+                                </Box>
+                            )}
+                        </Toolbar>
+                    </AppBar>
 
-                {/* Контент */}
-                <Box component="main" sx={{ flexGrow: 1, mt: 8, mb: 8, px: 2 }}>
-                    <Routes>
-                        <Route path="/" element={<FeedPage />} />
-                        <Route path="/resource/:id" element={<ResourcePage />} />
-                        <Route path="/profile" element={<ProfilePage />} />
-                    </Routes>
+                    {/* Контент */}
+                    <Box component="main" sx={{ flexGrow: 1, mt: 8, mb: 8, px: 2 }}>
+                        <Routes>
+                            <Route path="/" element={<FeedPage />} />
+                            <Route path="/resource/:id" element={<ResourcePage />} />
+                            <Route path="/profile" element={<ProfilePage />} />
+                        </Routes>
+                    </Box>
+
+                    {/* Нижняя плавающая кнопка */}
+                    <Fab
+                        color="primary"
+                        component={Link}
+                        to="/"
+                        sx={{
+                            position: 'fixed',
+                            bottom: 16,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            zIndex: 1300,
+                        }}
+                    >
+                        <HomeIcon />
+                    </Fab>
+
+                    {/* Модалки логина и регистрации */}
+                    <LoginDialog
+                        open={openLogin}
+                        onClose={() => setOpenLogin(false)}
+                        onLogin={handleLogin}
+                    />
+                    <RegisterDialog
+                        open={openRegister}
+                        onClose={() => setOpenRegister(false)}
+                        onRegister={handleRegister}
+                    />
                 </Box>
-
-                {/* Нижняя плавающая кнопка */}
-                <Fab
-                    color="primary"
-                    component={Link}
-                    to="/"
-                    sx={{
-                        position: 'fixed',
-                        bottom: 16,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        zIndex: 1300,
-                    }}
-                >
-                    <HomeIcon />
-                </Fab>
-
-                {/* Модалки логина и регистрации */}
-                <LoginDialog
-                    open={openLogin}
-                    onClose={() => setOpenLogin(false)}
-                    onLogin={handleLogin}
-                />
-                <RegisterDialog
-                    open={openRegister}
-                    onClose={() => setOpenRegister(false)}
-                    onRegister={handleRegister}
-                />
-            </Box>
-        </Router>
+            </Router>
+        </AuthProvider>
     );
 };
 
