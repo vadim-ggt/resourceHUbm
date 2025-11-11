@@ -54,9 +54,6 @@ public class ResourceController {
         resourceService.deleteResource(id, currentUser);
     }
 
-
-
-
     @GetMapping("/feed")
     public List<Resource> getAllResources() {
         return resourceService.getAllResources();
